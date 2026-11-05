@@ -1,0 +1,430 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg">
+
+    <androidx.drawerlayout.widget.DrawerLayout
+        android:id="@+id/drawerLayout"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/bg">
+
+        <!-- ======= 内容区：左侧窄条 + 主区 ======= -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="horizontal">
+
+            <!-- 左侧窄条（收起态账号列表） -->
+            <LinearLayout
+                android:id="@+id/rail"
+                android:layout_width="56dp"
+                android:layout_height="match_parent"
+                android:background="@color/rail_bg"
+                android:orientation="vertical"
+                android:paddingTop="8dp"
+                android:paddingBottom="8dp">
+
+            <FrameLayout
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_gravity="center_horizontal">
+
+                <ImageButton
+                    android:id="@+id/btnRailExpand"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:layout_gravity="center"
+                    android:background="@drawable/bg_rail_btn"
+                    android:contentDescription="@string/cd_expand"
+                    android:src="@drawable/ic_menu"
+                    android:tint="#AEB4BD" />
+
+                <View
+                    android:layout_width="7dp"
+                    android:layout_height="7dp"
+                    android:layout_gravity="top|end"
+                    android:layout_marginTop="9dp"
+                    android:layout_marginEnd="9dp"
+                    android:background="@drawable/bg_notify" />
+            </FrameLayout>
+
+            <ScrollView
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:scrollbars="none"
+                android:overScrollMode="never">
+
+                <LinearLayout
+                    android:id="@+id/railAvatars"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:gravity="center_horizontal"
+                    android:paddingTop="2dp"
+                    android:paddingBottom="2dp" />
+            </ScrollView>
+
+            <FrameLayout
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_gravity="center_horizontal">
+
+                <ImageButton
+                    android:id="@+id/btnFullscreen"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:layout_gravity="center"
+                    android:background="@drawable/bg_rail_btn"
+                    android:contentDescription="@string/cd_fullscreen"
+                    android:src="@drawable/ic_fullscreen"
+                    android:tint="#AEB4BD" />
+            </FrameLayout>
+
+            <FrameLayout
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_gravity="center_horizontal">
+
+                <ImageButton
+                    android:id="@+id/btnRailAdd"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:layout_gravity="center"
+                    android:background="@drawable/bg_rail_add"
+                    android:contentDescription="@string/cd_add"
+                    android:src="@drawable/ic_plus"
+                    android:tint="@color/blue" />
+            </FrameLayout>
+        </LinearLayout>
+
+        <!-- 主区：Muse 网页 -->
+        <FrameLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:background="@color/chat_bg">
+
+            <!-- 账号 WebView 容器：每个账号一个独立 WebView，切换时换显示 -->
+            <FrameLayout
+                android:id="@+id/webContainer"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="@color/chat_bg" />
+
+            <!-- 空状态 -->
+            <LinearLayout
+                android:id="@+id/emptyState"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="@color/chat_bg"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:padding="30dp"
+                android:visibility="gone">
+
+                <TextView
+                    android:layout_width="64dp"
+                    android:layout_height="64dp"
+                    android:background="@drawable/bg_mtile"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:text="m"
+                    android:textColor="@color/m_blue"
+                    android:textSize="33sp"
+                    android:textStyle="bold|italic"
+                    android:alpha="0.5" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:text="@string/empty_title"
+                    android:textColor="@color/text_primary"
+                    android:textSize="17sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:text="@string/empty_sub"
+                    android:textColor="@color/text_muted"
+                    android:textSize="12.5sp" />
+
+                <TextView
+                    android:id="@+id/btnEmptyAdd"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="18dp"
+                    android:background="@drawable/bg_blue_btn"
+                    android:paddingLeft="30dp"
+                    android:paddingRight="30dp"
+                    android:paddingTop="12dp"
+                    android:paddingBottom="12dp"
+                    android:text="@string/empty_add"
+                    android:textColor="#FFFFFFFF"
+                    android:textSize="14.5sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <!-- 切换环境过渡层 -->
+            <FrameLayout
+                android:id="@+id/splash"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="@color/splash_bg"
+                android:clickable="true"
+                android:focusable="true"
+                android:visibility="gone">
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:gravity="center_horizontal"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/splashTile"
+                        android:layout_width="54dp"
+                        android:layout_height="54dp"
+                        android:background="@drawable/bg_mtile"
+                        android:gravity="center"
+                        android:includeFontPadding="false"
+                        android:text="m"
+                        android:textColor="@color/m_blue"
+                        android:textSize="27sp"
+                        android:textStyle="bold|italic" />
+
+                    <TextView
+                        android:id="@+id/splashName"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:textColor="@color/text_primary"
+                        android:textSize="14.5sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="@string/splash_sub"
+                        android:textColor="@color/text_muted"
+                        android:textSize="12sp" />
+
+                    <ProgressBar
+                        android:layout_width="22dp"
+                        android:layout_height="22dp"
+                        android:layout_marginTop="14dp"
+                        android:indeterminateTint="@color/blue" />
+                </LinearLayout>
+            </FrameLayout>
+        </FrameLayout>
+    </LinearLayout>
+
+    <!-- ======= 抽屉（展开态账号列表） ======= -->
+    <LinearLayout
+        android:id="@+id/drawerContent"
+        android:layout_width="274dp"
+        android:layout_height="match_parent"
+        android:layout_gravity="start"
+        android:background="@color/drawer_bg"
+        android:fitsSystemWindows="true"
+        android:orientation="vertical">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingLeft="14dp"
+            android:paddingRight="14dp"
+            android:paddingTop="16dp"
+            android:paddingBottom="4dp">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/drawer_title"
+                    android:textColor="@color/text_primary"
+                    android:textSize="16.5sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/accCount"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:textColor="@color/text_muted"
+                    android:textSize="11.5sp" />
+            </LinearLayout>
+
+            <ImageButton
+                android:id="@+id/btnCollapse"
+                android:layout_width="34dp"
+                android:layout_height="34dp"
+                android:background="@drawable/bg_rail_btn"
+                android:contentDescription="@string/cd_collapse"
+                android:src="@drawable/ic_chevron_left"
+                android:tint="#AEB4BD" />
+        </LinearLayout>
+
+        <!-- 搜索框：按名称 + 标签过滤 -->
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="12dp"
+            android:layout_marginRight="12dp"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/bg_search">
+
+            <ImageView
+                android:layout_width="17dp"
+                android:layout_height="17dp"
+                android:layout_gravity="start|center_vertical"
+                android:layout_marginStart="12dp"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_search"
+                android:tint="#6F7680" />
+
+            <EditText
+                android:id="@+id/drawerSearch"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@null"
+                android:hint="@string/search_hint"
+                android:imeOptions="actionSearch"
+                android:inputType="text"
+                android:maxLines="1"
+                android:padding="11dp"
+                android:paddingStart="40dp"
+                android:paddingEnd="12dp"
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_dim"
+                android:textSize="13.5sp" />
+        </FrameLayout>
+
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:scrollbars="none"
+            android:overScrollMode="never">
+
+            <LinearLayout
+                android:id="@+id/accountList"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="10dp" />
+        </ScrollView>
+
+        <TextView
+            android:id="@+id/drawerEmpty"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:padding="18dp"
+            android:text="@string/search_empty"
+            android:textColor="@color/text_muted"
+            android:textSize="12.5sp"
+            android:visibility="gone" />
+
+        <LinearLayout
+            android:id="@+id/btnAddAccount"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="12dp"
+            android:layout_marginRight="12dp"
+            android:layout_marginBottom="10dp"
+            android:background="@drawable/bg_addcard"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:padding="12dp">
+
+            <FrameLayout
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:background="@drawable/bg_addplus">
+
+                <ImageView
+                    android:layout_width="19dp"
+                    android:layout_height="19dp"
+                    android:layout_gravity="center"
+                    android:contentDescription="@string/cd_add"
+                    android:src="@drawable/ic_plus"
+                    android:tint="@color/blue" />
+            </FrameLayout>
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginLeft="11dp"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/add_account"
+                    android:textColor="@color/text_primary"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="@string/add_account_sub"
+                    android:textColor="@color/text_muted"
+                    android:textSize="11.5sp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:paddingLeft="16dp"
+            android:paddingRight="16dp"
+            android:paddingTop="12dp"
+            android:paddingBottom="16dp">
+
+            <ImageView
+                android:layout_width="14dp"
+                android:layout_height="14dp"
+                android:layout_marginTop="2dp"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_shield"
+                android:tint="#6F7680" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginLeft="8dp"
+                android:layout_weight="1"
+                android:lineSpacingMultiplier="1.35"
+                android:text="@string/drawer_footnote"
+                android:textColor="@color/text_muted"
+                android:textSize="11.5sp" />
+        </LinearLayout>
+    </LinearLayout>
+    </androidx.drawerlayout.widget.DrawerLayout>
+
+    <!-- 全屏模式下：左缘手势条（置于顶层，向内划动唤回侧栏） -->
+    <View
+        android:id="@+id/edgeSwipe"
+        android:layout_width="16dp"
+        android:layout_height="match_parent"
+        android:visibility="gone" />
+</FrameLayout>

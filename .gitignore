@@ -1,0 +1,20 @@
+# Gradle
+.gradle/
+build/
+
+# Android Studio / IDEA
+.idea/
+*.iml
+captures/
+
+# Machine-specific
+local.properties
+
+# Build outputs (APK 通过 GitHub Releases 分发，不进仓库)
+*.apk
+*.aab
+
+# Native / misc
+.externalNativeBuild/
+.cxx/
+.DS_Store
