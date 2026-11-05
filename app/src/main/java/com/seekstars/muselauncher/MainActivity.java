@@ -6,6 +6,8 @@ import android.content.res.ColorStateList;
 import android.graphics.Typeface;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.SystemClock;
 import android.text.Editable;
 import android.text.InputType;
@@ -25,6 +27,7 @@ import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.webkit.RenderProcessGoneDetail;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
@@ -32,6 +35,10 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
@@ -72,7 +79,8 @@ public class MainActivity extends AppCompatActivity {
     private TextView splashName;
 
     /** 每个账号一个独立 WebView（Profile 只能在 WebView 初始化前设置一次） */
-    private final SparseArray<WebView> webViews = new SparseArray<>();
+    private static final int MAX_ALIVE_WEBVIEWS = 4; // LRU：最多同时保留的账号页面数（含当前）
+    private final LruAccountRegistry<WebView> webViews = new LruAccountRegistry<>(MAX_ALIVE_WEBVIEWS);
     private final SparseArray<Boolean> webLoaded = new SparseArray<>();
     private WebView currentWebView;
 
@@ -86,6 +94,20 @@ public class MainActivity extends AppCompatActivity {
     private float edgeStartX;
     private long edgeDownAt;
 
+    /** M4: 登录态分块探测。androidx Profile API 强制主线程调用，无法后台化；
+     *  改为主线程分块（每块 20 个账号，块间让出一帧），账号多时不阻塞 UI，脏标记合并请求 */
+    private static final int PROBE_CHUNK = 20;
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private final java.util.concurrent.atomic.AtomicBoolean probeRunning =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+    private final java.util.concurrent.atomic.AtomicBoolean probeDirty =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+    private List<Account> probeQueue;
+    private int probeIndex;
+    private boolean probeChanged;
+
+    private final Runnable probeStep = this::probeStep;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -97,6 +119,7 @@ public class MainActivity extends AppCompatActivity {
 
         setContentView(R.layout.activity_main);
         store = new AccountsStore(this);
+        checkStoreNotice();
         profileStore = ProfileStore.getInstance();
 
         drawerLayout = findViewById(R.id.drawerLayout);
@@ -185,52 +208,41 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void handleLaunchExtras(Intent launchIntent) {
-        {
-            // 先切账号（switchTo 会关抽屉），再处理全屏，最后开抽屉，保证终态符合预期
-            long startAccount = launchIntent.getLongExtra("start_account", -1L);
-            if (startAccount >= 0 && store.findById(startAccount) != null) {
-                switchTo(startAccount, true);
+        // M1: 调试/自动化参数仅 debug 构建响应；release 对 intent extra 不做任何动作，
+        // 避免第三方应用通过显式 intent 操纵账号配置（如改写代理）。
+        if (!LaunchCommands.enabled(BuildConfig.DEBUG)) return;
+        LaunchCommands cmd = LaunchCommands.fromIntent(launchIntent);
+        // 先切账号（switchTo 会关抽屉），再处理全屏，最后开抽屉，保证终态符合预期
+        if (cmd.startAccount >= 0 && store.findById(cmd.startAccount) != null) {
+            switchTo(cmd.startAccount, true);
+        }
+        if (cmd.hasFullscreen) {
+            if (cmd.fullscreen) {
+                enterFullscreen();
+            } else {
+                exitFullscreen();
             }
-            if (launchIntent.hasExtra("fullscreen")) {
-                if (launchIntent.getBooleanExtra("fullscreen", false)) {
-                    enterFullscreen();
-                } else {
-                    exitFullscreen();
-                }
+        }
+        if (cmd.showDrawer) {
+            drawerLayout.openDrawer(drawerContent);
+        }
+        if (cmd.hasOpenConfig) {
+            long cfgId = cmd.openConfigId >= 0 ? cmd.openConfigId : store.getCurrentId();
+            if (cfgId >= 0) {
+                openConfig(cfgId, cmd.proxyPreset, cmd.proxyAutoTest, cmd.proxySave);
             }
-            if (launchIntent.getBooleanExtra("show_drawer", false)) {
-                drawerLayout.openDrawer(drawerContent);
-            }
-            // 调试 extras 同上
-            if (launchIntent.hasExtra("open_config")) {
-                long cfgId = launchIntent.getLongExtra("open_config", -1L);
-                if (cfgId < 0) cfgId = store.getCurrentId();
-                if (cfgId >= 0) {
-                    openConfig(cfgId,
-                            launchIntent.getStringExtra("proxy_preset"),
-                            launchIntent.getBooleanExtra("proxy_autotest", false),
-                            launchIntent.getBooleanExtra("proxy_save", false));
-                }
-            }
-            if (launchIntent.hasExtra("search_query")) {
-                String q = launchIntent.getStringExtra("search_query");
-                if (q != null) searchInput.setText(q);
-            }
-            // 诊断：倒出各账号 cookie 名与 localStorage 键，用于确定真实登录标记
-            if (launchIntent.getBooleanExtra("dump_auth", false)) {
-                dumpAuthState();
-            }
-            // 调试：新建账号
-            if (launchIntent.getBooleanExtra("add_account", false)) {
-                addAccount();
-            }
-            // 调试：删除账号（同时清理其隔离数据）
-            if (launchIntent.hasExtra("del_account")) {
-                long delId = launchIntent.getLongExtra("del_account", -1L);
-                if (delId >= 0 && store.findById(delId) != null) {
-                    deleteAccount(delId);
-                }
-            }
+        }
+        if (cmd.searchQuery != null) {
+            searchInput.setText(cmd.searchQuery);
+        }
+        if (cmd.dumpAuth) {
+            dumpAuthState();
+        }
+        if (cmd.addAccount) {
+            addAccount();
+        }
+        if (cmd.hasDelAccount && cmd.delAccountId >= 0 && store.findById(cmd.delAccountId) != null) {
+            deleteAccount(cmd.delAccountId);
         }
     }
 
@@ -244,7 +256,7 @@ public class MainActivity extends AppCompatActivity {
             }
             Log.i("MuseAuth", "acct=" + a.id + " name=" + a.name
                     + " cookies=" + cookieNames(cookies));
-            WebView wv = webViews.get((int) a.id);
+            WebView wv = webViews.get(a.id);
             if (wv != null) {
                 wv.evaluateJavascript(
                         "(function(){try{return 'LS:'+(Object.keys(localStorage).join(',')||'-')"
@@ -292,7 +304,7 @@ public class MainActivity extends AppCompatActivity {
     // ---------- WebView（每账号独立实例） ----------
 
     private WebView getOrCreateWebView(final Account a) {
-        WebView wv = webViews.get((int) a.id);
+        WebView wv = webViews.get(a.id);
         if (wv != null) return wv;
 
         wv = new WebView(this);
@@ -323,6 +335,40 @@ public class MainActivity extends AppCompatActivity {
                 webContainer.postDelayed(hideSplashRunnable,
                         Math.max(0, MIN_SPLASH_MS - elapsed));
                 refreshLogged();
+            }
+
+            @Override
+            public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail detail) {
+                // M2: 渲染进程崩溃时销毁并重建该账号的 WebView，返回 true 拦截，避免拖垮整个应用。
+                // 账号的 Profile 数据不受影响，重建后仍是同一隔离环境（登录态保留）。
+                Long crashedId = null;
+                for (Map.Entry<Long, WebView> en : webViews.snapshot().entrySet()) {
+                    if (en.getValue() == view) {
+                        crashedId = en.getKey();
+                        break;
+                    }
+                }
+                webViews.remove(crashedId != null ? crashedId : -1L);
+                if (crashedId != null) webLoaded.remove(crashedId.intValue());
+                webContainer.removeView(view);
+                view.destroy();
+
+                boolean wasCurrent = crashedId != null
+                        && crashedId.longValue() == store.getCurrentId();
+                if (wasCurrent) {
+                    currentWebView = null;
+                    Account ca = store.findById(crashedId);
+                    WebView nv = ca != null ? getOrCreateWebView(ca) : null;
+                    if (nv != null) {
+                        nv.setVisibility(View.VISIBLE);
+                        currentWebView = nv;
+                    }
+                }
+                if (crashedId != null) {
+                    Log.i("MuseWebview", "renderer gone, id=" + crashedId + " rebuilt=" + wasCurrent);
+                    toast(getString(R.string.toast_webview_recovered));
+                }
+                return true;
             }
 
             @Override
@@ -383,7 +429,7 @@ public class MainActivity extends AppCompatActivity {
 
         wv.loadUrl(START_URL);
         webContainer.addView(wv);
-        webViews.put((int) a.id, wv);
+        webViews.put(a.id, wv);
         return wv;
     }
 
@@ -411,6 +457,7 @@ public class MainActivity extends AppCompatActivity {
         if (currentWebView != null) currentWebView.onResume();
         // 配置页等可能在别处改过存储；刷新内存列表并重应用当前账号代理
         store.reload();
+        checkStoreNotice();
         refreshLogged();
         Account cur = store.findById(store.getCurrentId());
         ProxyHelper.apply(cur != null ? cur.proxy : "");
@@ -482,9 +529,18 @@ public class MainActivity extends AppCompatActivity {
         target.setVisibility(View.VISIBLE);
         target.onResume();
         currentWebView = target;
-        for (int i = 0; i < webViews.size(); i++) {
-            WebView wv = webViews.valueAt(i);
-            if (wv != target) wv.setVisibility(View.GONE);
+        for (Map.Entry<Long, WebView> en : webViews.snapshot().entrySet()) {
+            if (en.getValue() != target) en.getValue().setVisibility(View.GONE);
+        }
+        // M4: LRU 驱逐超出上限的旧账号页面（Profile 数据保留，仅页面状态丢弃）
+        for (long evictedId : webViews.touchAndEvict(a.id, target)) {
+            WebView old = webViews.remove(evictedId);
+            if (old != null) {
+                webLoaded.remove((int) evictedId);
+                webContainer.removeView(old);
+                old.destroy();
+                Log.i("MuseWebview", "lru evict id=" + evictedId);
+            }
         }
 
         if (animate) showSplashFor(a);
@@ -523,10 +579,9 @@ public class MainActivity extends AppCompatActivity {
         } catch (Exception ignored) {
         }
         // 销毁该账号的 WebView 实例
-        WebView wv = webViews.get((int) id);
+        WebView wv = webViews.remove(id);
         if (wv != null) {
             if (wv == currentWebView) currentWebView = null;
-            webViews.remove((int) id);
             webLoaded.remove((int) id);
             webContainer.removeView(wv);
             wv.destroy();
@@ -541,22 +596,43 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void refreshLogged() {
-        boolean changed = false;
-        for (Account a : store.all()) {
+        if (!probeRunning.compareAndSet(false, true)) {
+            probeDirty.set(true); // 已有一轮在跑，结束后补一轮
+            return;
+        }
+        probeQueue = new ArrayList<>(store.all());
+        probeIndex = 0;
+        probeChanged = false;
+        probeStep();
+    }
+
+    private void probeStep() {
+        if (probeQueue == null || probeIndex >= probeQueue.size()) {
+            probeQueue = null;
+            probeRunning.set(false);
+            if (probeDirty.compareAndSet(true, false)) refreshLogged();
+            return;
+        }
+        int end = Math.min(probeIndex + PROBE_CHUNK, probeQueue.size());
+        for (int i = probeIndex; i < end; i++) {
+            Account a = probeQueue.get(i);
             try {
                 Profile p = profileStore.getProfile(profileName(a.id));
                 // 不能用 hasCookies()：匿名访问也会落下 Cloudflare/Meta 埋点 cookie，一律误判已登录。
                 // 只认 muse.ai 的登录会话 cookie hatch_sess。
-                String cookies = p != null ? p.getCookieManager().getCookie("https://muse.ai/") : null;
+                String cookies = p != null
+                        ? p.getCookieManager().getCookie("https://muse.ai/") : null;
                 boolean logged = cookies != null && cookies.contains(AUTH_COOKIE_MARKER);
                 if (logged != a.logged) {
                     a.logged = logged;
-                    changed = true;
+                    probeChanged = true;
                 }
             } catch (Exception ignored) {
             }
         }
-        if (changed && editId == -1 && confirmDelId == -1) renderAccounts();
+        probeIndex = end;
+        if (probeChanged && editId == -1 && confirmDelId == -1) renderAccounts();
+        mainHandler.postDelayed(probeStep, 16); // 让出一帧再继续下一块
     }
 
     private String profileName(long id) {
@@ -838,6 +914,16 @@ public class MainActivity extends AppCompatActivity {
 
     private void toast(String msg) {
         Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();
+    }
+
+    /** M3: 账号存储损坏/自愈提示（takeLoadNotice 取走即清，不重复弹） */
+    private void checkStoreNotice() {
+        String n = store.takeLoadNotice();
+        if ("recovered".equals(n)) {
+            toast(getString(R.string.toast_store_recovered));
+        } else if ("corrupt".equals(n)) {
+            toast(getString(R.string.toast_store_corrupt));
+        }
     }
 
     private int dp(int v) {

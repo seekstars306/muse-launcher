@@ -112,11 +112,12 @@ adb shell am start -n com.seekstars.muselauncher/.MainActivity \
   --ez proxy_save true
 ```
 
-> ⚠️ 这组接口面向**个人设备自动化**设计，未做调用方校验（应用本身是普通 launcher 应用）。请勿在不可信的环境中使用。
+> ⚠️ 这组接口仅在 **debug 构建**中生效（release 构建出于安全考虑不响应任何 intent 参数），面向**个人设备自动化**设计，未做调用方校验。请勿在不可信的环境中使用。需要自动化能力时请自行用 `./gradlew assembleDebug` 构建安装。
 
 ## 🧩 实现原理
 
 - **账号隔离**：AndroidX WebView `ProfileStore`，每个账号一个 `Profile`（`acct_<id>`），绑定到各自的常驻 WebView 实例；删除账号时清空并删除对应 Profile；
+- **页面按 LRU 驻留**：最多同时保留 4 个账号的页面会话，超出时最久未用的页面被回收（Profile 数据保留，登录态不丢，切回时重新加载页面）；单个页面渲染进程崩溃时自动重建，不影响其他账号；
 - **独立代理**：`WebViewCompat` 的 `ProxyController` 是应用级开关，本应用同一时刻只有一个账号在前台，切换账号时应用该账号的代理（支持代理 URL 内嵌账密，另有 407 挑战应答兜底）；
 - **UA 伪装**：移除 UA 中的 `; wv` 与 `Version/x.x` 标识，避免被 muse.ai 判定为 WebView 而重定向商店。
 
@@ -133,7 +134,8 @@ adb shell am start -n com.seekstars.muselauncher/.MainActivity \
 - 应用**不包含任何统计、上报或第三方 SDK**（仅 androidx.webkit / appcompat）；
 - 网络请求只发生在 muse.ai 本身与你自行配置的代理之间；
 - 账号元数据（名称/头像/标签/代理）存于本机 SharedPreferences；登录数据存于各账号的本机 WebView Profile；
-- 卸载应用即清除全部数据。
+- **系统备份已禁用**（`allowBackup=false`）：登录态等敏感数据不会进入云备份或设备迁移，卸载应用即全部清除；
+- 账号数据损坏时自动从滚动备份自愈，无法恢复时原始内容会留底在应用私有目录，不会静默丢失。
 
 ## ⚠️ 免责声明
 
