@@ -123,6 +123,16 @@ public class AccountsStore {
         return a;
     }
 
+    /** 新建账号并继承指定代理（国内直连 muse.ai 不通，新环境沿用可用网络路径），返回新账号。 */
+    public synchronized Account addDefault(String inheritProxy) {
+        Account a = addDefault();
+        if (inheritProxy != null && !inheritProxy.isEmpty()) {
+            a.proxy = inheritProxy;
+            save();
+        }
+        return a;
+    }
+
     public synchronized void rename(long id, String name) {
         Account a = findById(id);
         if (a != null) {

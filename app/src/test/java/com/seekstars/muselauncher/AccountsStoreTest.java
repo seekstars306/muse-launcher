@@ -177,6 +177,23 @@ public class AccountsStoreTest {
         assertEquals(first, kv.getString("list_prev", null));
     }
 
+    /** 新建环境继承代理：proxy 传入即写入并持久化；空/null 则保持直连 */
+    @Test
+    public void addDefault_inheritsProxy() {
+        FakeKv kv = new FakeKv();
+        AccountsStore s = new AccountsStore(kv);
+        Account a = s.addDefault("http://u:p@1.2.3.4:3129");
+        assertEquals("http://u:p@1.2.3.4:3129", a.proxy);
+        // 持久化校验：新实例读回仍有代理
+        AccountsStore s2 = new AccountsStore(kv);
+        assertEquals("http://u:p@1.2.3.4:3129", s2.findById(a.id).proxy);
+
+        Account b = s2.addDefault(null);
+        assertEquals("", b.proxy);
+        Account c = s2.addDefault("");
+        assertEquals("", c.proxy);
+    }
+
     /** M4：setCurrent 只写 currentId 独立键，不全量重写 list（账号多时切换零开销） */
     @Test
     public void setCurrent_writesOnlyCurrentKey() {

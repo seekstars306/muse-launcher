@@ -28,6 +28,8 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.webkit.RenderProcessGoneDetail;
+import android.webkit.WebResourceError;
+import android.webkit.WebResourceRequest;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
@@ -77,11 +79,17 @@ public class MainActivity extends AppCompatActivity {
     private View emptyState;
     private View splash;
     private TextView splashName;
+    private View errorOverlay;
+    private TextView errorMsg;
 
     /** 每个账号一个独立 WebView（Profile 只能在 WebView 初始化前设置一次） */
     private static final int MAX_ALIVE_WEBVIEWS = 4; // LRU：最多同时保留的账号页面数（含当前）
     private final LruAccountRegistry<WebView> webViews = new LruAccountRegistry<>(MAX_ALIVE_WEBVIEWS);
     private final SparseArray<Boolean> webLoaded = new SparseArray<>();
+    /** 主框架加载出错标记（错误遮罩依据），重试成功后清除 */
+    private final SparseArray<Boolean> webErrored = new SparseArray<>();
+    /** 加载耗时统计起点 */
+    private final SparseArray<Long> loadStartAt = new SparseArray<>();
     private WebView currentWebView;
 
     private long editId = -1;
@@ -132,6 +140,8 @@ public class MainActivity extends AppCompatActivity {
         drawerEmpty = findViewById(R.id.drawerEmpty);
         accCount = findViewById(R.id.accCount);
         webContainer = findViewById(R.id.webContainer);
+        errorOverlay = findViewById(R.id.errorOverlay);
+        errorMsg = findViewById(R.id.errorMsg);
         emptyState = findViewById(R.id.emptyState);
         splash = findViewById(R.id.splash);
         splashName = findViewById(R.id.splashName);
@@ -144,6 +154,18 @@ public class MainActivity extends AppCompatActivity {
         findViewById(R.id.btnAddAccount).setOnClickListener(v -> addAccount());
         findViewById(R.id.btnEmptyAdd).setOnClickListener(v -> addAccount());
         findViewById(R.id.btnFullscreen).setOnClickListener(v -> enterFullscreen());
+
+        // 加载失败遮罩：重试按钮重新加载当前账号页面
+        findViewById(R.id.btnRetry).setOnClickListener(v -> {
+            long curId = store.getCurrentId();
+            if (currentWebView != null && curId >= 0) {
+                webErrored.put((int) curId, false);
+                hideErrorOverlay();
+                loadStartAt.put((int) curId, SystemClock.uptimeMillis());
+                Log.i("MusePerf", "load retry id=" + curId);
+                currentWebView.reload();
+            }
+        });
 
         // 搜索框：输入即时按名称 + 标签过滤
         searchInput.addTextChangedListener(new TextWatcher() {
@@ -328,13 +350,46 @@ public class MainActivity extends AppCompatActivity {
 
         wv.setWebViewClient(new WebViewClient() {
             @Override
+            public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
+                if (webErrored.get((int) a.id, false)) {
+                    // 新一次加载开始：清错误标记，失败会由 onReceivedError 重新置位
+                    webErrored.put((int) a.id, false);
+                }
+            }
+
+            @Override
             public void onPageFinished(WebView view, String url) {
                 webLoaded.put((int) a.id, true);
+                Long st = loadStartAt.get((int) a.id);
+                if (st != null) {
+                    Log.i("MusePerf", "load end id=" + a.id + " cost="
+                            + (SystemClock.uptimeMillis() - st) + "ms errored="
+                            + webErrored.get((int) a.id, false));
+                    loadStartAt.remove((int) a.id);
+                }
                 if (a.id != store.getCurrentId()) return;
+                if (webErrored.get((int) a.id, false)) {
+                    showErrorOverlay(null); // 错误页已渲染，保持遮罩等用户重试
+                } else {
+                    hideErrorOverlay();
+                }
                 long elapsed = SystemClock.uptimeMillis() - splashShownAt;
                 webContainer.postDelayed(hideSplashRunnable,
                         Math.max(0, MIN_SPLASH_MS - elapsed));
                 refreshLogged();
+            }
+
+            @Override
+            public void onReceivedError(WebView view, WebResourceRequest request,
+                                        WebResourceError error) {
+                if (!request.isForMainFrame()) return;
+                webErrored.put((int) a.id, true);
+                Log.i("MusePerf", "load error id=" + a.id
+                        + " desc=" + error.getDescription());
+                if (a.id == store.getCurrentId()) {
+                    showErrorOverlay(error.getDescription() != null
+                            ? error.getDescription().toString() : null);
+                }
             }
 
             @Override
@@ -427,10 +482,25 @@ public class MainActivity extends AppCompatActivity {
             return null;
         }
 
+        loadStartAt.put((int) a.id, SystemClock.uptimeMillis());
+        Log.i("MusePerf", "load start id=" + a.id);
         wv.loadUrl(START_URL);
         webContainer.addView(wv);
         webViews.put(a.id, wv);
         return wv;
+    }
+
+    private void showErrorOverlay(String msg) {
+        if (msg != null && !msg.isEmpty()) {
+            errorMsg.setText(msg);
+        } else {
+            errorMsg.setText(R.string.error_generic);
+        }
+        errorOverlay.setVisibility(View.VISIBLE);
+    }
+
+    private void hideErrorOverlay() {
+        errorOverlay.setVisibility(View.GONE);
     }
 
     @Override
@@ -507,7 +577,9 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void addAccount() {
-        Account a = store.addDefault();
+        // 新环境继承当前账号的代理：国内直连 muse.ai 不通，空代理的新环境必然卡在加载（问题 2）
+        Account prev = store.findById(store.getCurrentId());
+        Account a = store.addDefault(prev != null ? prev.proxy : null);
         editId = -1;
         confirmDelId = -1;
         switchTo(a.id, true);
@@ -542,6 +614,15 @@ public class MainActivity extends AppCompatActivity {
                 Log.i("MuseWebview", "lru evict id=" + evictedId);
             }
         }
+
+        // 目标页面若处于错误态：自动重新加载，避免停留在无法恢复的错误页（问题 1）
+        if (webErrored.get((int) a.id, false)) {
+            webErrored.put((int) a.id, false);
+            loadStartAt.put((int) a.id, SystemClock.uptimeMillis());
+            Log.i("MusePerf", "load reload-on-switch id=" + a.id);
+            target.reload();
+        }
+        hideErrorOverlay();
 
         if (animate) showSplashFor(a);
         drawerLayout.closeDrawer(drawerContent);

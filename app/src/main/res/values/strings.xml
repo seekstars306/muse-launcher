@@ -22,6 +22,11 @@
     <string name="toast_webview_recovered">页面出现异常，已自动恢复当前账号环境</string>
     <string name="toast_store_recovered">账号数据出现异常，已自动从备份恢复</string>
     <string name="toast_store_corrupt">账号数据损坏且无法自动恢复，原始内容已留底</string>
+    <!-- 加载失败遮罩 -->
+    <string name="error_title">页面加载失败</string>
+    <string name="error_hint">请检查网络连接，或到账号配置里确认该账号的代理可用</string>
+    <string name="error_retry">重试</string>
+    <string name="error_generic">网络连接异常</string>
     <string name="confirm_delete_fmt">删除 %s 的隔离环境？\n该账号的登录数据将被清除。</string>
     <string name="btn_delete">删除</string>
     <string name="btn_cancel">取消</string>
