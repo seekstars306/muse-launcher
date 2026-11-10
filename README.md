@@ -155,3 +155,16 @@ muse.ai 是 Meta 服务，国内网络直连不通。新建环境会**自动继�
 ## 📄 License
 
 [MIT](LICENSE)
+
+---
+
+## 🔗 友情链接
+
+- [LINUX DO](https://linux.do/) —— 真诚分享、友好讨论的技术社区，本项目的交流与反馈也发布于此
+
+---
+
+## 🔗 相关链接
+
+- [Muse Launcher Windows 版](https://github.com/seekstars306/muse-launcher-windows) —— 对应的 Windows WPF + WebView2 多账号启动器
+
